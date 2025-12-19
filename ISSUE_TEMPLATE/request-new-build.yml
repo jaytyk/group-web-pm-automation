@@ -1,0 +1,79 @@
+name: 신규 구축 요청
+description: 그룹사/관계사 신규 홈페이지 구축 요청 접수
+title: "[신규구축] 사이트명 - 요청요약"
+labels: ["type:new-build"]
+body:
+  - type: input
+    id: site
+    attributes:
+      label: 사이트/법인명
+      placeholder: 예) Nexon Foundation / NXC / 관계사 A
+    validations:
+      required: true
+
+  - type: input
+    id: requester
+    attributes:
+      label: 요청자(부서/이름)
+      placeholder: 예) 홍보실 김OO
+    validations:
+      required: true
+
+  - type: dropdown
+    id: urgency
+    attributes:
+      label: 긴급도
+      options:
+        - 일반(2~4주 이상)
+        - 빠름(1~2주)
+        - 긴급(1주 이내)
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: 목적/배경
+      placeholder: 왜 필요하고, 어떤 효과를 기대하는지
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: 범위(페이지/기능)
+      placeholder: 예) 메인/소개/뉴스룸/CSR/채용 링크/다국어 등
+    validations:
+      required: true
+
+  - type: dropdown
+    id: pii
+    attributes:
+      label: 개인정보(PII) 수집/저장 여부
+      options:
+        - 없음
+        - 있음(문의/신청/이벤트/뉴스레터 등)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: auth
+    attributes:
+      label: 로그인/회원 기능 여부
+      options:
+        - 없음
+        - 있음
+    validations:
+      required: true
+
+  - type: textarea
+    id: integrations
+    attributes:
+      label: 연동/외부 시스템
+      placeholder: 예) GA/GTAG, CDN, SSO, CMS, CRM, 이메일 발송, 결제 등
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: 제약/선호사항
+      placeholder: 예) 특정 CMS, 디자인 가이드, 도메인, 운영팀, 인프라
