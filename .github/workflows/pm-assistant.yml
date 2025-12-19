@@ -1,0 +1,150 @@
+name: PM Assistant
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  auto-triage-and-checklist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PM assistant (labels + checklist comment)
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = context.payload.issue.number;
+            const issue = context.payload.issue;
+            const body = issue.body || "";
+
+            const MARKER = "<!-- pm-assistant:checklist -->";
+
+            const labelColors = {
+              "type:new-build": "2da44e",
+              "type:change": "8250df",
+              "urgency:normal": "0969da",
+              "urgency:fast": "d4a72c",
+              "urgency:urgent": "d1242f",
+              "risk:pii": "d1242f",
+              "risk:auth": "fb8f44",
+              "triage": "ededed",
+            };
+
+            function escapeRegExp(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+            function getField(label) {
+              const re = new RegExp(`###\\s+${escapeRegExp(label)}\\s*\\n\\n([\\s\\S]*?)(?=\\n\\n###\\s+|$)`, 'm');
+              const m = body.match(re);
+              return (m ? m[1].trim() : "");
+            }
+
+            const requestType = getField("요청 유형"); // "신규 구축" or "운영 변경"
+            const siteName = getField("사이트/법인명(또는 도메인)");
+            const requester = getField("요청자(부서/이름)");
+            const urgency = getField("긴급도");
+            const pii = getField("개인정보(PII) 수집/저장/처리 변경 여부");
+            const auth = getField("로그인/회원/권한 기능 영향 여부");
+            const summary = getField("요청 요약(한 문단)");
+
+            function includesAny(text, arr){
+              const t = (text || "").toLowerCase();
+              return arr.some(x => t.includes(String(x).toLowerCase()));
+            }
+
+            function mapUrgency(u){
+              if (includesAny(u, ["긴급"])) return "urgency:urgent";
+              if (includesAny(u, ["빠름"])) return "urgency:fast";
+              return "urgency:normal";
+            }
+
+            const wanted = new Set();
+            wanted.add("triage");
+
+            if (includesAny(requestType, ["신규"])) wanted.add("type:new-build");
+            else wanted.add("type:change");
+
+            wanted.add(mapUrgency(urgency));
+
+            if (includesAny(pii, ["있음"])) wanted.add("risk:pii");
+            if (includesAny(auth, ["있음"])) wanted.add("risk:auth");
+
+            async function ensureLabel(name){
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (e) {
+                const color = labelColors[name] || "ededed";
+                try {
+                  await github.rest.issues.createLabel({
+                    owner, repo, name,
+                    color,
+                    description: "Auto-created by PM Assistant"
+                  });
+                } catch (e2) {
+                  // 이미 생성되었거나 권한/경쟁 상황이면 무시
+                }
+              }
+            }
+
+            // 1) 라벨 생성 보장
+            for (const name of wanted) await ensureLabel(name);
+
+            // 2) 라벨 부착(중복 제외)
+            const existingLabels = (issue.labels || []).map(l => (typeof l === "string" ? l : l.name));
+            const toAdd = [...wanted].filter(x => !existingLabels.includes(x));
+            if (toAdd.length) {
+              await github.rest.issues.addLabels({ owner, repo, issue_number, labels: toAdd });
+            }
+
+            // 3) 체크리스트 선택
+            const isNew = wanted.has("type:new-build");
+            const checklistPath = isNew ? "templates/checklist-new-build.md" : "templates/checklist-change.md";
+            const checklist = fs.readFileSync(checklistPath, "utf8");
+
+            const piiNote = wanted.has("risk:pii")
+              ? "\n> ⚠️ **PII 영향 가능성**: 수집항목/보관기간/처리위탁/파기/동의문구/약관·개인정보처리방침 반영을 우선 점검하세요.\n"
+              : "";
+
+            const comment =
+`${MARKER}
+👋 **PM 자동 안내(라벨 + 체크리스트)**가 업데이트되었습니다.
+
+### 요약
+- **요청 유형**: ${requestType || "N/A"}
+- **대상**: ${siteName || "N/A"}
+- **요청자**: ${requester || "N/A"}
+- **긴급도**: ${urgency || "N/A"}
+- **PII**: ${pii || "N/A"}
+- **로그인/권한 영향**: ${auth || "N/A"}
+
+${summary ? `> ${summary}\n` : ""}
+
+${piiNote}
+
+${checklist}
+
+---
+#### 운영 팁
+- 이 이슈를 “작업 허브”로 사용(결정사항/리스크/승인 로그 축적)
+- 체크리스트 완료 후 Close
+`;
+
+            // 4) 기존 댓글 있으면 업데이트, 없으면 생성
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number, per_page: 100
+            });
+            const existing = comments.find(c => (c.body || "").includes(MARKER));
+
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: comment });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body: comment });
+            }
