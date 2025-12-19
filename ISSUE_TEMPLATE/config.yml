@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 운영/구축 PM 가이드(문서)
+    url: https://YOUR_GITHUB_USERNAME.github.io/group-web-pm-automation/
+    about: 요청 전 표준 프로세스/필수 확인사항을 먼저 확인하세요.
